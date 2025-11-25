@@ -90,7 +90,6 @@ with st.sidebar:
     st.markdown("---")
     use_filter = st.checkbox("Noise Filter", value=True)
     color_mode = st.radio("Path Color", ["Altitude", "RSSI"])
-    # 3Dマップの傾き調整
     pitch = st.slider("3D Map Pitch (Tilt)", 0, 60, 45)
 
 # --- 読み込み ---
@@ -149,14 +148,13 @@ with c2:
 
 st.markdown("---")
 
-# --- メインレイアウト (タブで2D/3D切り替え) ---
+# --- メインレイアウト ---
 col_map, col_track, col_chart = st.columns([2.7, 1.8, 2.5])
 
 with col_map:
     tab2d, tab3d = st.tabs(["2D Map", "3D View"])
     
     with tab2d:
-        # 2Dマップ
         fig = go.Figure()
         if "RSSI" in color_mode and 'rssi' in hist.columns:
             fig.add_trace(go.Scattermapbox(
@@ -188,49 +186,27 @@ with col_map:
         st.markdown(f"[Open Google Maps]({gmap_url})")
 
     with tab3d:
-        # 3Dマップ (PyDeck)
         path_data = hist[['lon', 'lat', 'altitude']].values.tolist()
-        
-        # 軌跡レイヤー
         layer_path = pdk.Layer(
-            "PathLayer",
-            data=[{"path": path_data}],
-            get_path="path",
-            get_color=[255, 215, 0], # Gold
-            width_min_pixels=3,
-            width_scale=1,
+            "PathLayer", data=[{"path": path_data}],
+            get_path="path", get_color=[255, 215, 0], width_min_pixels=3
         )
-        
-        # 現在地レイヤー
         layer_pos = pdk.Layer(
-            "ScatterplotLayer",
-            data=pd.DataFrame([cur]),
+            "ScatterplotLayer", data=pd.DataFrame([cur]),
             get_position=["lon", "lat", "altitude"],
-            get_color=[255, 165, 0], # Orange
-            get_radius=200,
-            pickable=True,
+            get_color=[255, 165, 0], get_radius=200, pickable=True
         )
-
-        # 視点設定
         view_state = pdk.ViewState(
-            latitude=cur['lat'],
-            longitude=cur['lon'],
-            zoom=10,
-            pitch=pitch,
-            bearing=0
+            latitude=cur['lat'], longitude=cur['lon'],
+            zoom=10, pitch=pitch, bearing=0
         )
-
-        # 描画設定
-        # 【修正点】map_styleを特定のMapboxスタイルから、
-        # APIキー不要で表示できるシンプルなスタイルに変更しました。
         r = pdk.Deck(
             layers=[layer_path, layer_pos],
             initial_view_state=view_state,
-            map_style="light",  # ここを 'light' または 'dark' に変更
-            tooltip={"text": "Alt: {altitude}m"}
+            map_style="light", tooltip={"text": "Alt: {altitude}m"}
         )
         st.pydeck_chart(r)
-        st.caption("※ [Shift]+ドラッグで回転できます")
+        st.caption("※ [Shift]+Drag to rotate")
 
 with col_track:
     st.subheader("Tracking")
@@ -250,18 +226,28 @@ with col_track:
 
 with col_chart:
     st.subheader("Logs")
-    fig_alt = px.line(hist, x='timestamp', y='altitude', title="Altitude")
+    
+    # 1. Altitude
+    fig_alt = px.line(hist, x='timestamp', y='altitude', title="Altitude (m)")
     fig_alt.update_traces(line_color='#4CAF50')
     if slider_idx > max_alt_idx:
         fig_alt.add_hline(y=burst_alt, line_dash="dash", line_color="red")
     fig_alt.update_layout(height=200, margin=dict(t=30,b=0,l=0,r=0))
     st.plotly_chart(fig_alt, use_container_width=True)
 
+    # 2. Speed
     fig_spd = go.Figure()
     fig_spd.add_trace(go.Scatter(x=hist['timestamp'], y=hist['climb_rate'], name='Vert', line=dict(color='#FF5722')))
     fig_spd.add_trace(go.Scatter(x=hist['timestamp'], y=hist['ground_speed'], name='Gnd', line=dict(color='#9C27B0')))
-    fig_spd.update_layout(title="Speed", height=200, margin=dict(t=30,b=0,l=0,r=0), showlegend=True)
+    fig_spd.update_layout(title="Speed (m/s)", height=200, margin=dict(t=30,b=0,l=0,r=0), showlegend=True)
     st.plotly_chart(fig_spd, use_container_width=True)
+
+    # 3. Signal Strength (追加機能)
+    if 'rssi' in hist.columns:
+        fig_rssi = px.line(hist, x='timestamp', y='rssi', title="Signal Strength (dBm)")
+        fig_rssi.update_traces(line_color='#2196F3')
+        fig_rssi.update_layout(height=200, margin=dict(t=30,b=0,l=0,r=0))
+        st.plotly_chart(fig_rssi, use_container_width=True)
 
 st.divider()
 st.dataframe(df.round(2), use_container_width=True)
