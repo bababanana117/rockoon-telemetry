@@ -8,57 +8,38 @@ import numpy as np
 import time
 import textwrap
 
-# ワイドレイアウト・絵文字なしタイトル
+# ページ設定 (アイコンなし)
 st.set_page_config(page_title="Rockoon Telemetry", layout="wide")
 st.title("Rockoon Telemetry System")
 
 # --- 定数 ---
 SEQUENCE_MAP = {0: "STANDBY", 1: "LAUNCH", 2: "THRUSTER", 3: "IGNITION", 4: "BURST", 5: "DESCENT", 6: "SPLASHDOWN"}
 
-# --- タイムライン描画 (準備エリア復活・色固定版) ---
+# --- タイムライン描画 (完全青固定・絵文字なし) ---
 def render_timeline(current_alt, is_descent, phase_label):
-    # === 設定値 ===
     BURST_ALT = 30000
+    BAR_BURST_POS = 90
     
-    # バー上の位置設定 (%)
-    POS_START = 10  # LAUNCH地点 (ここより左は準備エリア)
-    POS_BURST = 90  # 破裂地点
-    
-    # マーカー位置計算 (POS_START ~ POS_BURST の間に配置)
-    def get_pos(alt):
-        ratio = alt / BURST_ALT
-        return POS_START + (ratio * (POS_BURST - POS_START))
+    pct_ign = (15000 / BURST_ALT) * BAR_BURST_POS
+    pct_thr = (20000 / BURST_ALT) * BAR_BURST_POS
+    pct_brs = BAR_BURST_POS
 
-    pct_lnc = POS_START
-    pct_ign = get_pos(15000)
-    pct_thr = get_pos(20000)
-    pct_brs = POS_BURST
-
-    # === 進捗率計算 ===
-    if phase_label == "STANDBY":
-        # 準備中: 0% ~ 10% の真ん中
-        progress = 5
-    elif not is_descent:
-        # 上昇中: 10% -> 90%
-        progress = get_pos(current_alt)
-        progress = min(POS_BURST, max(POS_START, progress))
+    if not is_descent:
+        progress = (current_alt / BURST_ALT) * BAR_BURST_POS
+        progress = min(BAR_BURST_POS, max(0, progress))
     else:
-        # 降下中: 90% -> 100%
         descent_ratio = 1.0 - (current_alt / BURST_ALT)
         if descent_ratio < 0: descent_ratio = 0
         if descent_ratio > 1: descent_ratio = 1
-        progress = POS_BURST + (descent_ratio * (100 - POS_BURST))
+        progress = BAR_BURST_POS + (descent_ratio * (100 - BAR_BURST_POS))
 
-    # 色設定: 常に青 (SpaceX Blue)
+    # 【修正】色は常に青で統一 (条件分岐を削除)
     bar_color = "#00A3E0"
 
-    # アクティブ判定
-    c_lnc = "active" if current_alt >= 10 or is_descent else ""
     c_ign = "active" if current_alt >= 15000 or is_descent else ""
     c_thr = "active" if current_alt >= 20000 or is_descent else ""
     c_brs = "active" if current_alt >= 30000 or is_descent else ""
 
-    # HTML生成
     html_code = textwrap.dedent(f"""
         <style>
             body {{ margin: 0; padding: 0; background-color: #0E1117; font-family: sans-serif; }}
@@ -78,14 +59,13 @@ def render_timeline(current_alt, is_descent, phase_label):
                 height: 40px;
                 margin-top: 15px;
             }}
-            /* ベースライン */
             .base-line {{
                 position: absolute; top: 50%; left: 0; width: 100%; height: 2px;
                 background-color: #333; transform: translateY(-50%); z-index: 0;
             }}
-            /* 左端の点線（準備エリア） */
+            /* 準備エリアの点線 */
             .prep-line {{
-                position: absolute; top: 50%; left: 0; width: {POS_START}%; height: 2px;
+                position: absolute; top: 50%; left: 0; width: 10%; height: 2px;
                 background: repeating-linear-gradient(90deg, #333, #333 4px, transparent 4px, transparent 8px);
                 transform: translateY(-50%); z-index: 0;
             }}
@@ -125,8 +105,8 @@ def render_timeline(current_alt, is_descent, phase_label):
                 <div class="prep-line"></div>
                 <div class="progress-bar"></div>
                 
-                <div class="marker {c_lnc}" style="left: {pct_lnc}%;"></div>
-                <div class="marker-label" style="left: {pct_lnc}%;">LAUNCH<br>0km</div>
+                <div class="marker active" style="left: 10%;"></div>
+                <div class="marker-label" style="left: 10%;">LAUNCH<br>0km</div>
 
                 <div class="marker {c_ign}" style="left: {pct_ign}%;"></div>
                 <div class="marker-label" style="left: {pct_ign}%;">IGNITION<br>15km</div>
@@ -240,13 +220,13 @@ def load_realtime_data(file_path):
 # --- サイドバー設定 ---
 with st.sidebar:
     st.header("System Mode")
-    mode = st.radio("Select Mode", ["Manual Analysis", "Real-time Monitor"])
+    mode = st.radio("Select Mode", ["Manual Analysis", "Real-time Monitor"]) # 絵文字削除
     st.markdown("---")
     if mode == "Manual Analysis":
         uploaded_file = st.file_uploader("Upload Log", type=['csv', 'txt'])
     else:
         log_path = st.text_input("Log Path", "flight_log.csv")
-        start_btn = st.button("START MONITORING", type="primary")
+        start_btn = st.button("START MONITORING", type="primary") # 絵文字削除
     st.markdown("---")
     use_filter = st.checkbox("Noise Filter", value=True)
     color_mode = st.radio("Path Color", ["Altitude", "RSSI"])
@@ -259,6 +239,7 @@ def render_dashboard(cur, hist, full_df):
     is_descent = cur.name >= max_alt_idx
     v_speed = cur['climb_rate'] if not np.isnan(cur['climb_rate']) else 0.0
 
+    # --- ステータス判定 ---
     if not is_descent:
         if (cur['altitude'] - start_alt) < 10:
             status_text = "STANDBY"
@@ -279,9 +260,10 @@ def render_dashboard(cur, hist, full_df):
             status_color = "#303F9F"
         burst_disp = f"{full_df.iloc[max_alt_idx]['altitude']:.0f} m"
 
-    # タイムライン表示
+    # 1. タイムライン
     render_timeline(cur['altitude'], is_descent, status_text)
 
+    # 2. ボタン & 統計 (絵文字削除)
     col_btn, col_stats = st.columns([1, 3])
     with col_btn:
         st.download_button("Get KML", generate_kml(full_df), "flight.kml", use_container_width=True)
@@ -291,19 +273,32 @@ def render_dashboard(cur, hist, full_df):
 
     with col_stats:
         c1, c2, c3, c4 = st.columns(4)
+        
+        # MET計算
+        launch_detected = full_df[(full_df['altitude'] - start_alt) > 10]
+        if len(launch_detected) > 0:
+            t0 = launch_detected.iloc[0]['timestamp']
+            delta = cur['timestamp'] - t0
+            total_sec = int(delta.total_seconds())
+            sign = "T+" if total_sec >= 0 else "T-"
+            mins, secs = divmod(abs(total_sec), 60)
+            hours, mins = divmod(mins, 60)
+            met_disp = f"{sign} {hours:02}:{mins:02}:{secs:02}"
+        else:
+            met_disp = "T- 00:00:00"
+
         c1.metric("Burst Alt", burst_disp)
-        max_spd = hist['climb_rate'].max()
-        c2.metric("Max Speed", f"{max_spd:.1f} m/s" if not np.isnan(max_spd) else "0.0 m/s")
-        max_dist = hist['ground_dist_km'].max()
-        c3.metric("Max Dist", f"{max_dist:.2f} km")
+        c2.metric("Mission Time", met_disp)
+        c3.metric("Current Alt", f"{cur['altitude']:.0f} m")
         c4.markdown(f"<div style='background:{status_color};color:white;padding:10px;text-align:center;border-radius:4px;font-weight:bold;font-size:18px;'>{status_text}</div>", unsafe_allow_html=True)
 
     st.markdown("---")
 
+    # 3. マップ & グラフ
     col_map, col_track, col_chart = st.columns([2.7, 1.8, 2.5])
 
     with col_map:
-        tab2d, tab3d = st.tabs(["2D Map", "3D View"])
+        tab2d, tab3d = st.tabs(["2D Map", "3D Map"]) # 絵文字削除
         with tab2d:
             fig = go.Figure()
             if "RSSI" in color_mode and 'rssi' in hist.columns:
@@ -319,7 +314,7 @@ def render_dashboard(cur, hist, full_df):
 
             fig.update_layout(mapbox_style="open-street-map", mapbox=dict(center=dict(lat=cur['lat'], lon=cur['lon']), zoom=10), height=450, margin=dict(l=0,r=0,t=0,b=0), showlegend=False)
             st.plotly_chart(fig, use_container_width=True)
-            st.markdown(f"[Google Maps](https://www.google.com/maps/search/?api=1&query={cur['lat']},{cur['lon']})")
+            st.markdown(f"[Google Maps](https://www.google.com/maps/search/?api=1&query={cur['lat']},{cur['lon']})") # 絵文字削除
 
         with tab3d:
             path_data = hist[['lon', 'lat', 'altitude']].values.tolist()
